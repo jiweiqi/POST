@@ -1,50 +1,56 @@
-%% post code in Matlab for raw pressure data in TU_RCM
-%https://github.com/jiweiqi/rcm-pressure-post
+%%
+%{
+
+This program is for postprocess pressure trace data from Tsinghua RCM,
+The original pressure data filename should be like:20140113_Test_18.txt,
+This file consits of two columns:Chamber Pressure & Sampling Pressure
+
+Updating at
+
+https://github.com/jiweiqi/rcm-pressure-post
+
+%}
+
 clear;clc;close all;
 
-%% Input Para
-processible = 1;    % If the current run could not be processed for some reason, please change this flag to 0, and highlight the reason in reamrk. 
+%% INPUT INITIAL PARAMETERS
+processible = 1;            % If the current run could not be processed for some reason,please change this flag to 0, and highlight the reason in reamrk. 
 dataFilename = '20140730_Test_23.txt';
 rcm.initial.P = 0.8017;     % bar
 rcm.initial.T = 297.55;     % K
-rcm.bool_sampling = 1;  %0 corresponding to without sampling  
-rcm.sampling.delay = 25;	%ms
-rcm.config = '10';      % mm
+rcm.bool_sampling = 1;      % 0 is corresponding to without sampling  
+rcm.sampling.delay = 25;	% ms
+rcm.config = '10';          % mm
 Remark = '';                % Remark about the present experiment.
-rcm.sampling.length = 2;    %scale in ms.default 2ms
+rcm.sampling.length = 2;    % Scale in [ms].default is 2ms
 rcm.ign_stage = 1;          % One-stage ignition or Two-stage ignition.
-% 如果着火前压力无明显下降，直接手动选取P_eff积分终点,set 0
-rcm.TDC_lower_bool =1;
-rcm.phi = '0.4';
-%% look up TDC & ign
-%TDC = End of compressure
-rcm.lookup.TDC.begin_lower = 0.480 *10^5;       %Input lower limit for look up TDC (first peak，beginning of ign)
-rcm.lookup.TDC.begin_upper = 0.4974*10^5;      %Input upper limit for look up TDC 
-rcm.lookup.TDC.eff_begin_lower = rcm.lookup.TDC.begin_lower;   %Input lower limit for look up beginning of Effective pressure
-rcm.lookup.TDC.eff_begin_upper = rcm.lookup.TDC.begin_upper;  %Input upper limit for look up beginning of Effective pressure
-rcm.lookup.TDC.finish_upper = 0.526*10^5;      %Input upper limit for look up end of Effective pressure
-%Find time of first stage ignition 76
-%% Just set this start point when first stage
-rcm.lookup.ign.total_lower = rcm.lookup.TDC.finish_upper;       %Input lower limit for look up Total ign
-%% 一级着火不需要以下两个参数
-rcm.lookup.ign.first_lower = 0.489 *10^5;        %Input lower limit for look up Fisrt ign
-rcm.lookup.ign.first_upper = 0.4897*10^5;        %Input upper limit for look up Fisrt ign
-rcm.fuel = 'Isobutanol';
-% rcm.Molar = struct(...
-%     'O2', 0, ...
-%     'N2',1, ...
-%     'Ar',0, ...
-%     'H2',0, ...
-%     'CO2',0, ...
-%     'CO',0,...
-%     'H2O',0, ...
-%     'nHeptane',0, ...
-%     'Toluene',0, ...
-%     'Isooctane',0,...
-%     'MCH',0, ...
-%     'CH4',0,...
-%     'Isobutanol',0 );
+rcm.TDC_lower_bool =1;      % Set 0 when no visuable drop of pressure befor ignition
+rcm.phi = '0.4';            
 
+%% look up TDC(TOP DEAD CENTER) & ignition point
+rcm.lookup.TDC.begin_lower = 0.480 *10^5;       
+                                            %Input LOWER limit for looking up TDC 
+rcm.lookup.TDC.begin_upper = 0.4974*10^5;   
+                                            %Input UPPER limit for looking up TDC 
+rcm.lookup.TDC.eff_begin_lower = rcm.lookup.TDC.begin_lower;   
+                                            %Input LOWER limit for looking up beginning of Effective pressure
+rcm.lookup.TDC.eff_begin_upper = rcm.lookup.TDC.begin_upper;  
+                                            %Input UPPER limit for looking up End of Effective
+rcm.lookup.TDC.finish_upper = 0.526*10^5;      
+                                            %Input UPPER limit for looking up End of Effective pressure
+                                            %Also used as LOWER limit for looking up total ignition point
+                                            
+rcm.lookup.ign.total_lower = rcm.lookup.TDC.finish_upper;    
+rcm.lookup.ign_upper = 10^5-100;      
+                                            %Default 100, Specify it when multi peaks for dp/dt exist
+   
+                                            %Set this start point [only if first stage happens]
+                                            %Input LOWER limit for looking up Total ign
+rcm.lookup.ign.first_lower = 0.489 *10^5;   %Input LOWER limit for looking up Fisrt ign [only if first stage happens]
+rcm.lookup.ign.first_upper = 0.4897*10^5;   %Input UPPER limit for looking up Fisrt ign [only if first stage happens]
+
+%% Fuel Components
+rcm.fuel = 'Isobutanol';
 rcm.Molar = struct(...
     'O2', 0.120887594, ...
     'N2',0.342614805, ...
@@ -58,62 +64,87 @@ rcm.Molar = struct(...
     'Isooctane',0,...
     'MCH',0, ...
     'CH4',0,...
-    'Isobutanol',0.008053461 );
+    'Isobutanol',0.008053461,...
+    'DMH26',0);
 
+%% Coefficients for Pressure Trancedure and Filting
 rcm.P.AMP = 20;     %bar/V
 rcm.P.Filter.hrrCOF = 3000; %Hz
 rcm.P.Filter.NyquistFreq = 10^5/2;
 
-
-%% Sampling Switch
-rcm.sampling.P = 30;        %scale in bar
-rcm.sampling.valve = 0.039; %scale in inch
 rcm.sampling.P_AMP = 0.5;	%bar/V
 rcm.sampling.Filter.hrrCOF = 1000;
 rcm.sampling.Filter.NyquistFreq = 10^5/2;
+
 %% Primary Settings and Checkings
 FontName = 'Times New Roman';
 FontSize = 15;
 FontWeight = 'Bold';
 LineWidth = 1.5;
 no_data_sign = '/';
-rcm.remark = Remark;
+
 rcm.Molar.Dilution_ratio = (rcm.Molar.N2 + rcm.Molar.Ar + rcm.Molar.CO2 )./rcm.Molar.O2;
-Mole_sum = rcm.Molar.O2 + rcm.Molar.N2 + rcm.Molar.Ar + rcm.Molar.H2 + rcm.Molar.CO2 + rcm.Molar.CO + rcm.Molar.H2O + ...
-        rcm.Molar.nHeptane + rcm.Molar.Toluene + rcm.Molar.Isooctane + rcm.Molar.MCH + rcm.Molar.Isobutanol +rcm.Molar.CH4; 
+
+Mole_sum = rcm.Molar.O2 + rcm.Molar.N2 + rcm.Molar.Ar + rcm.Molar.H2 + rcm.Molar.CO2 + ...
+    rcm.Molar.CO + rcm.Molar.H2O + ...
+        rcm.Molar.nHeptane + rcm.Molar.Toluene + rcm.Molar.Isooctane ...
+        + rcm.Molar.MCH + rcm.Molar.Isobutanol +rcm.Molar.CH4 +rcm.Molar.DMH26; 
+
 assert( abs(Mole_sum-1)< 0.001 , ...
-        ['The Sum of Molar Fraction is Not Unity!' 10 'Please Check Molar Fraction!'] );
-assert( rcm.bool_sampling ==0 | rcm.bool_sampling == 1,  ['Please input 0 or 1 for sampling switch (in Row 49)!' 10 ...
-    'Input 0 for without Sampling.' 10 'Input 1 if there is Sampling.']);
-assert( rcm.ign_stage == 1 | rcm.ign_stage == 2, ['Please input 1 or 2 for Ignition Stage (in Row 12)!' 10 ...
-    'Input 1 for One-stage Ignition.' 10 'Input 2 for two-stage ignition.'] );
+        ['The Sum of Molar Fraction is Not Unity!' 10 ...
+        'Please Check Molar Fraction!'] );
+    
+assert( rcm.bool_sampling ==0 | rcm.bool_sampling == 1,  ...
+    ['Please input 0 or 1 for sampling switch !' 10 ...
+    'Input 0 for without Sampling.' 10 ...
+    'Input 1 if there is Sampling.']);
+
+assert( rcm.ign_stage == 1 | rcm.ign_stage == 2, ...
+    ['Please input 1 or 2 for Ignition Stage !' 10 ...
+    'Input 1 for One-stage Ignition.' 10 ...
+    'Input 2 for two-stage ignition.'] );
 
 %% Folder：Assign and Creat Directory
-%Get current directory
 currentFolder = pwd;
+
 rcm.date = dataFilename(1:8);
+
 dataFolder = [currentFolder, '\data\',rcm.date];
+
 figFolder = [currentFolder, '\fig\',rcm.date];
+
 rcmFolder = [currentFolder, '\rcm\',rcm.date];
+
 xlsFolder = [currentFolder, '\xls'];
+
 rcm.dataPath = [dataFolder, '\', dataFilename];
+
+sampling_figFolder = [currentFolder, '\fig\samplingFig\',rcm.date];
+
 if exist( figFolder, 'dir' )==0
     mkdir( figFolder )
 end
-if exist( rcmFolder )==0
+
+if exist( rcmFolder, 'dir')==0
     mkdir( rcmFolder )
 end
-if exist( xlsFolder )==0
+
+if exist( xlsFolder, 'dir' )==0
     mkdir(xlsFolder)
+end
+
+if exist( sampling_figFolder,'dir' )==0
+    mkdir( sampling_figFolder )
 end
 
 %% Get date and time
 listing = dir(rcm.dataPath);
+
 % check we got a single entry corresponding to the file
 assert(numel(listing) == 1, 'No such file: %s', rcm.dataPath);
-% % % modTime = datestr(listing.date);
-% % % rcm.time = modTime(length(modTime)-7:length(modTime));
+
 rcm.raw.data = dlmread(rcm.dataPath);
+
 if dataFilename(16) == '.'
     ID_map_str = [dataFilename(1:8),'0', dataFilename(15)];
     rcm.dayID = ['0', dataFilename(15)];
@@ -121,18 +152,29 @@ else
     ID_map_str = [dataFilename(1:8),dataFilename(15:16)];
     rcm.dayID = dataFilename(15:16);
 end
+
 rcm.ID = [rcm.date rcm.dayID];
 
-%% P.raw
+%% Raw chamber pressure data
 rcm.raw.length = size(rcm.raw.data, 1);
+
 rcm.P.raw.time = 1/rcm.raw.length: 1/rcm.raw.length: 1;
+
 rcm.P.raw.time = rcm.P.raw.time';
-rcm.P.raw.P = rcm.raw.data(:,1);
-rcm.P.post = ( (rcm.P.raw.P-sum(rcm.P.raw.P(1:30000)/30000))*rcm.P.AMP ) + rcm.initial.P;
+
+N_COLUMN = 1;            % Which column to be filted
+                          % 1st column refers to the chamber pressure
+rcm.P.post = ( (rcm.raw.data(:,N_COLUMN)-...
+    sum(rcm.raw.data(1:30000,N_COLUMN)/30000))*rcm.P.AMP ) + rcm.initial.P;
+                          % P.post refers to the chamber pressure calibrated with initial pressure
+                          
 %% Filter Chamber Pressure
-% Filter the pressure derivative, pressure trace in reactio chamber
-% 把dp_dCA代称压力曲线，cadArray是实验采集点的数目，hrrCOF是过滤频率
-cadArray= rcm.raw.data(:,1);
+
+% Plz comment on this section
+                          % dp_dCA refers to rwa pressure trace
+                          % cadArray refers to NUMBER of samples
+                          % hrrCOF refers to filting frequence
+cadArray= rcm.raw.data(:,N_COLUMN);
 hrrCOF=rcm.P.Filter.hrrCOF;
 NyquistFreq = rcm.P.Filter.NyquistFreq;
 cof = hrrCOF/NyquistFreq;
@@ -148,59 +190,121 @@ filter_func = min (filter_func, filter_limit);
 dp_dCA = ifft (fft_of_dpdca .* filter_func);
 dp_dCA = real (dp_dCA);
 rcm.P.post =dp_dCA;
-%% PLOT Chamber Pressure Trace and Differential Trace & Save Fig
+                          % Diff P
 rcm.P.dP = diff(rcm.P.post)./diff(rcm.P.raw.time);
-figure(1);
-[AX, H1, H2] = plotyy(  rcm.P.raw.time,                         rcm.P.post,...
-                        rcm.P.raw.time(1:rcm.raw.length-1),     rcm.P.dP    );
-set(get(AX(1), 'Ylabel'), 'String', 'Pressure(bar)', 'FontSize', FontSize, 'FontWeight', FontWeight, 'Color', 'k');
-set(AX(1), 'fontsize', FontSize);
-set(AX(2), 'fontsize', FontSize);
-set(get(AX(2), 'Ylabel'), 'String', 'dP', 'FontSize', FontSize, 'FontWeight', FontWeight, 'Color', 'b');
-set(H1, 'Color', 'r', 'LineWidth', LineWidth, 'LineStyle', '-');
-set(H2, 'Color', 'b', 'LineWidth', LineWidth, 'LineStyle', '--');
-xlabel('Time(s)', 'FontSize', FontSize, 'FontWeight', FontWeight);
-legend ( 'Presure','dP','Location','NorthWest');
-title(rcm.ID, 'FontSize', FontSize, 'FontWeight', FontWeight);
-FileFig1 = ['RCM_',rcm.ID,'.fig']; 
-saveas(figure(1), fullfile(figFolder,FileFig1));
-%% LOOK UP TDC
-[rcm.lookup.TDC.eff_begin_P, rcm.lookup.TDC.eff_begin_index] = ...
-    max( rcm.P.post(rcm.lookup.TDC.eff_begin_lower+1:rcm.lookup.TDC.eff_begin_upper) );
-rcm.lookup.TDC.eff_begin_index = rcm.lookup.TDC.eff_begin_index +  rcm.lookup.TDC.eff_begin_lower;
 
+%% Sampling Data Process
+N_COLUMN = 2;
+
+rcm.sampling.P = (rcm.raw.data(:,N_COLUMN)-...
+    sum(rcm.raw.data(1:3000,N_COLUMN)/3000))*rcm.sampling.P_AMP;
+
+%% Filter Sampling Pressure
+    
+cadArray= rcm.raw.data(:,N_COLUMN);
+hrrCOF=rcm.sampling.Filter.hrrCOF;
+NyquistFreq = rcm.sampling.Filter.NyquistFreq;
+cof = hrrCOF/NyquistFreq;
+dp_dCA = rcm.sampling.P;
+fft_of_dpdca = fft (dp_dCA);
+aaa = (0:1:(length(cadArray)-1)) * 0.8326 / (length(cadArray)/2*cof);
+aaa = aaa';
+filter_func = exp (-1 * aaa.^2);
+rev_filter_func = filter_func (length(filter_func):-1:1);
+filter_func = filter_func + rev_filter_func;
+filter_limit = ones(size(filter_func));
+filter_func = min (filter_func, filter_limit);
+dp_dCA = ifft (fft_of_dpdca .* filter_func);
+dp_dCA = real (dp_dCA);
+rcm.sampling.P =dp_dCA;
+
+%% LOOK UP TDC
+                               % Beginning of Effective Pressure
+[rcm.lookup.TDC.eff_begin_P, rcm.lookup.TDC.eff_begin_index] = ...
+    max( rcm.P.post(rcm.lookup.TDC.eff_begin_lower+1: rcm.lookup.TDC.eff_begin_upper) );
+                               
+rcm.lookup.TDC.eff_begin_index = rcm.lookup.TDC.eff_begin_index +  rcm.lookup.TDC.eff_begin_lower;
+                                % Beginning of Ignition delay
 [rcm.lookup.TDC.begin_P, rcm.lookup.TDC.begin_index] = ...
     max( rcm.P.post(rcm.lookup.TDC.begin_lower+1:rcm.lookup.TDC.begin_upper) );
-rcm.lookup.TDC.begin_index = rcm.lookup.TDC.begin_index +  rcm.lookup.TDC.begin_lower;
-rcm.lookup.TDC.zero_index = rcm.lookup.TDC.begin_index;
-rcm.lookup.TDC.zero_time = rcm.lookup.TDC.zero_index/10^2;
+
+rcm.lookup.TDC.zero_index = rcm.lookup.TDC.begin_index +  rcm.lookup.TDC.begin_lower;
+                
+rcm.lookup.TDC.zero_time = rcm.lookup.TDC.zero_index/10^2; 
+                                % Scale in [ms]
+
 %% LOOK UP IGN
 rcm.lookup.TDC.finish_lower = rcm.lookup.TDC.eff_begin_index;
+
 if rcm.TDC_lower_bool == 0
+    
     rcm.lookup.TDC.finish_index = rcm.lookup.TDC.finish_upper;
-else 
+
+else
+    
     [rcm.lookup.TDC.finish_P, rcm.lookup.TDC.finish_index] = ...
         min( rcm.P.post(rcm.lookup.TDC.finish_lower+1:rcm.lookup.TDC.finish_upper) );
+    
     rcm.lookup.TDC.finish_index = rcm.lookup.TDC.finish_index + rcm.lookup.TDC.finish_lower;
 end
-rcm.lookup.TDC.average_P = sum( rcm.P.post(rcm.lookup.TDC.eff_begin_index:rcm.lookup.TDC.finish_index) )...
+
+rcm.P_eff = sum( rcm.P.post(rcm.lookup.TDC.eff_begin_index:rcm.lookup.TDC.finish_index) )...
                             /( rcm.lookup.TDC.finish_index - rcm.lookup.TDC.eff_begin_index +1 );
-rcm.P_eff = rcm.lookup.TDC.average_P;
+                            % Cal P_eff
 rcm.P_ratio = rcm.P_eff / rcm.initial.P;
+                            % Look up first ignition delay
+                            % Mark first ignition delay in future version
 [rcm.lookup.ign.first_flag, rcm.lookup.ign.first_index] = max( ...
     rcm.P.dP( rcm.lookup.ign.first_lower+1: rcm.lookup.ign.first_upper ) );
+
 rcm.lookup.ign.first_index = rcm.lookup.ign.first_index + rcm.lookup.ign.first_lower;
+
 rcm.ign.first_time = ( rcm.lookup.ign.first_index - rcm.lookup.TDC.zero_index +1)/100;
+
 [rcm.lookup.ign.total_flag, rcm.lookup.ign.total_index] = max(...
-rcm.P.dP( rcm.lookup.ign.total_lower+1:rcm.raw.length-100));
+    rcm.P.dP( rcm.lookup.ign.total_lower+1:rcm.lookup.ign_upper));
+
 rcm.lookup.ign.total_index = rcm.lookup.ign.total_index + rcm.lookup.ign.total_lower;
+
 rcm.ign.total_time = (rcm.lookup.ign.total_index - rcm.lookup.TDC.zero_index+1)/100;
+
 rcm.ign.second_time = rcm.ign.total_time - rcm.ign.first_time;
+
 rcm.ign_time = [rcm.ign.first_time,rcm.ign.second_time, rcm.ign.total_time];
-%% Cal Effective Temperature
+
+%% Cal sampling time
+                  % Cal effective P_sampling, corrsponding to sampling amount
+N_COLUMN = 3;
+                  % PULSE is 5 V TTL
+rcm.sampling.start_index = find(rcm.raw.data(:,N_COLUMN) > 0.2, 1 );
+
+rcm.sampling.finish_index = find(rcm.raw.data(:,N_COLUMN) > 0.2, 1 );
+
+rcm.sampling.middle_index = (rcm.sampling.start_index + rcm.sampling.finish_index)./2;
+
+rcm.sampling.P_before = sum( rcm.sampling.P(1000:30000) )/(30000-1000);
+
+rcm.sampling.P_after = sum( rcm.sampling.P(85000:100000-1000) )/(15000-1000);
+
+rcm.sampling.deltaP = rcm.sampling.P_after - rcm.sampling.P_before;
+
+sampling_P_mid = (rcm.sampling.P_before + rcm.sampling.P_after)/2;
+
+rcm.sampling.index = find( rcm.sampling.P(20000:80000) > sampling_P_mid ,1)...
+    +20000;
+
+rcm.sampling.time = rcm.P.raw.time(rcm.sampling.index)*10^3 ...
+    - rcm.lookup.TDC.zero_time;
+
+rcm.sampling.time_pulse = rcm.P.raw.time(rcm.sampling.middle_index)*10^3 ...
+    - rcm.lookup.TDC.zero_time;
+
+rcm.sampling.normal_time = rcm.sampling.time./rcm.ign_time(3);
+
+%% Cal Effective Temperature 7 Volume Compression ratio
 dT = 0.01;
 dP_sum = 0;
-%Universal gas constant
+                  %Universal gas constant
 R=8.31451;        %J/(mol-K)
 T = rcm.initial.T;
 while dP_sum < log( rcm.P_ratio )
@@ -246,14 +350,21 @@ while dP_sum < log( rcm.P_ratio )
     else
         Isobutanol =-8.37465362e-01 + 5.76520639e-02.*T - 3.90215462e-05.*T.^2 +1.40131231e-08.*T.^3-2.11159111e-12.*T.^4;
     end
+    
+    if (T>1393)
+        DMH26 = 2.86146686E+01 + 4.41140780E-02.*T -1.51388773E-05.*T.^2 + 2.35538159E-09.*T.^3 -1.36850135E-13.*T.^4;
+    else
+        DMH26 = -2.69759199E+00 + 1.13719824E-01.*T -7.40347807E-05.*T.^2 +2.50653320E-08.*T.^3 -3.52291338E-12.*T.^4;
+    end
 
     %Cp/R of Ar   MW=40
     Ar=2.5;
+    
     Cp=(H2*rcm.Molar.H2 + N2*rcm.Molar.N2 + O2*rcm.Molar.O2 + Ar*rcm.Molar.Ar +...
         CO2*rcm.Molar.CO2 + H2O*rcm.Molar.H2O + CO*rcm.Molar.CO + ...
         n_Heptane*rcm.Molar.nHeptane + Toluene * rcm.Molar.Toluene +...
         Isooctane*rcm.Molar.Isooctane + MCH*rcm.Molar.MCH +CH4*rcm.Molar.CH4 +...
-        Isobutanol*rcm.Molar.Isobutanol )*R;
+        Isobutanol*rcm.Molar.Isobutanol +DMH26*rcm.Molar.DMH26 )*R;
     Cv = Cp - R;
     gamma = Cp / Cv;
     
@@ -261,7 +372,8 @@ while dP_sum < log( rcm.P_ratio )
     T = T + dT;
 end
 rcm.T_eff = T; 
-%% Cal Volume Compression ration 
+
+                  %Cal Volume Compression ratio
 CR_V_sum = 0;
 T = rcm.initial.T;
 N = 50000;
@@ -278,7 +390,6 @@ for i=1:N
         CO=3.04848583+1.35172818E-3.*T-4.85794075E-7.*T.^2+7.88536486E-11.*T.^3-4.69807489E-15.*T.^4;
         H2=3.33727920E+00-4.94024731E-05.*T+4.99456778E-07.*T.^2-1.79566394E-10.*T.^3+2.00255376E-14.*T.^4;
         CH4=7.48514950E-02+ 1.33909467E-02.*T-5.73285809E-06.*T^2 + 1.22292535E-09.*T^3 -1.01815230E-13.*T^4;
-
     else
         N2=3.53100528-1.23660987E-4.*T-5.02999437E-7.*T.^2+2.43530612E-09.*T.^3-1.40881235E-12.*T.^4;
         O2=3.78245636-2.99673415E-3.*T+9.84730200E-6.*T.^2-9.68129508E-09.*T.^3+3.24372836E-12.*T.^4;
@@ -310,14 +421,21 @@ for i=1:N
     else
         Isobutanol =-8.37465362e-01 + 5.76520639e-02.*T - 3.90215462e-05.*T.^2 +1.40131231e-08.*T.^3-2.11159111e-12.*T.^4;
     end
+    
+    if (T>1393)
+        DMH26 = 2.86146686E+01 + 4.41140780E-02.*T -1.51388773E-05.*T.^2 + 2.35538159E-09.*T.^3 -1.36850135E-13.*T.^4;
+    else
+        DMH26 = -2.69759199E+00 + 1.13719824E-01.*T -7.40347807E-05.*T.^2 +2.50653320E-08.*T.^3 -3.52291338E-12.*T.^4;
+    end
 
     %Cp/R of Ar   MW=40
     Ar=2.5;
-     Cp=(H2*rcm.Molar.H2 + N2*rcm.Molar.N2 + O2*rcm.Molar.O2 + Ar*rcm.Molar.Ar +...
+    
+    Cp=(H2*rcm.Molar.H2 + N2*rcm.Molar.N2 + O2*rcm.Molar.O2 + Ar*rcm.Molar.Ar +...
         CO2*rcm.Molar.CO2 + H2O*rcm.Molar.H2O + CO*rcm.Molar.CO + ...
         n_Heptane*rcm.Molar.nHeptane + Toluene * rcm.Molar.Toluene +...
         Isooctane*rcm.Molar.Isooctane + MCH*rcm.Molar.MCH +CH4*rcm.Molar.CH4 +...
-        Isobutanol*rcm.Molar.Isobutanol )*R;
+        Isobutanol*rcm.Molar.Isobutanol +DMH26*rcm.Molar.DMH26 )*R;
     Cv = Cp - R;
     gamma = Cp / Cv;
     
@@ -327,127 +445,211 @@ end
 ln_CR_V = CR_V_sum;
 rcm.V_CR = exp(ln_CR_V);
 
-%% Sampling Data Process
-if rcm.bool_sampling == 1 % Begin of Sampling Process
-sampling_figFolder = [currentFolder, '\fig\samplingFig\',rcm.date];
-if exist( sampling_figFolder )==0
-    mkdir( sampling_figFolder )
-end
-rcm.sampling.P = (rcm.raw.data(:,2)-sum(rcm.raw.data(1:3000,2)/3000))*rcm.sampling.P_AMP;
-%% Filter Sampling Pressure
-% Filter the pressure derivative, pressure trace in sampling tank
-% 把dp_dCA代称压力曲线，cadArray是实验采集点的数目，hrrCOF是过滤频率
-cadArray= rcm.raw.data(:,2);
-hrrCOF=rcm.sampling.Filter.hrrCOF;
-NyquistFreq = rcm.sampling.Filter.NyquistFreq;
-cof = hrrCOF/NyquistFreq;
-dp_dCA = rcm.sampling.P;
-fft_of_dpdca = fft (dp_dCA);
-aaa = (0:1:(length(cadArray)-1)) * 0.8326 / (length(cadArray)/2*cof);
-aaa = aaa';
-filter_func = exp (-1 * aaa.^2);
-rev_filter_func = filter_func (length(filter_func):-1:1);
-filter_func = filter_func + rev_filter_func;
-filter_limit = ones(size(filter_func));
-filter_func = min (filter_func, filter_limit);
-dp_dCA = ifft (fft_of_dpdca .* filter_func);
-dp_dCA = real (dp_dCA);
-rcm.sampling.P =dp_dCA;
-%% PLOT Sampling Pressure Trace and Chamber Pressure Trace IF Sampling & Save Fig
-if logical(rcm.bool_sampling)
-figure(2);
-[AX1, H1, H2] = plotyy(  rcm.P.raw.time,     rcm.P.post,...
-                        rcm.P.raw.time,     rcm.sampling.P  );
-%plot( rcm.P.raw.time, rcm.raw.data(:,3) );
-set(get(AX(1), 'Ylabel'), 'String', 'Chamber Pressure(bar)', 'FontSize', FontSize, 'FontWeight', FontWeight, 'Color', 'k');
+
+%% PLOT Chamber Pressure Trace and Differential Trace & Save Fig
+
+figure(1);
+
+[AX, H1, H2] = plotyy(  rcm.P.raw.time,                         rcm.P.post,...
+                        rcm.P.raw.time(1:rcm.raw.length-1),     rcm.P.dP    );
+
+set(get(AX(1), 'Ylabel'), 'String', 'Pressure(bar)', 'FontSize', FontSize, ...
+    'FontWeight', FontWeight);
+set(get(AX(2), 'Ylabel'), 'String', 'dP', 'FontSize', FontSize, ...
+    'FontWeight', FontWeight);
+
 set(AX(1), 'fontsize', FontSize);
 set(AX(2), 'fontsize', FontSize);
-set(get(AX(2), 'Ylabel'), 'String', 'Sampling Pressure(bar)', 'FontSize', FontSize, 'FontWeight', FontWeight, 'Color', 'b');
+
 set(H1, 'Color', 'r', 'LineWidth', LineWidth, 'LineStyle', '-');
 set(H2, 'Color', 'b', 'LineWidth', LineWidth, 'LineStyle', '--');
-xlabel('Time(s)', 'FontSize', FontSize, 'FontWeight', FontWeight);
+
+xlabel('Time[s]', 'FontSize', FontSize, 'FontWeight', FontWeight);
+
+legend ( 'Presure','dP','Location','NorthWest');
+
+title(rcm.ID, 'FontSize', FontSize, 'FontWeight', FontWeight);
+
+hold all;
+
+plot( [rcm.lookup.TDC.zero_time rcm.lookup.TDC.zero_time]./1E3,...
+    [min( rcm.P.post ) max(rcm.P.post)] ,'-.');
+                                        % Plot Ignition delay start
+hold all;
+
+plot( [rcm.lookup.TDC.zero_time+rcm.ign.total_time ...
+    rcm.lookup.TDC.zero_time+rcm.ign.total_time]./1E3,...
+    [min( rcm.P.post ) max(rcm.P.post)] ,'-.k');
+                                        % Plot ignition
+hold all;
+
+plot( [0 1],[rcm.P.post(rcm.lookup.TDC.eff_begin_index) ...
+    rcm.P.post(rcm.lookup.TDC.eff_begin_index)] ,'-.');
+                                        % Plot P_eff start     
+hold all;
+
+plot( [0 1],[rcm.P.post(rcm.lookup.TDC.finish_index) ...
+    rcm.P.post(rcm.lookup.TDC.finish_index)] ,'-.');
+
+hold all;
+
+str = [ 'Peff = ' num2str(rcm.P_eff ,'%.2f')  '  Teff = ' num2str(rcm.T_eff,'%.2f') ...
+    '  CR = ' num2str([rcm.V_CR rcm.P.post(rcm.lookup.TDC.eff_begin_index) ], '%.2f\n')...
+    ' - ' num2str( rcm.P.post(rcm.lookup.TDC.finish_index),'%.2f' ) ' = ' ...
+    num2str( rcm.P.post(rcm.lookup.TDC.eff_begin_index) - rcm.P.post(rcm.lookup.TDC.finish_index),'%.2f' )] ;
+text('Position',[rcm.lookup.TDC.zero_time./1E3 max(rcm.P.post)], ...
+    'String',str,...
+    'FontName', 'Times New Roman','FontSize', 8);
+                                        % Plot P_eff end
+FileFig1 = ['RCM_',rcm.ID,'.fig']; 
+
+saveas(figure(1), fullfile(figFolder,FileFig1));
+
+%% PLOT Sampling Pressure Trace and Chamber Pressure Trace IF Sampling & Save Fig
+
+figure(2);
+
+[AX, H1, H2] = plotyy(  rcm.P.raw.time,     rcm.P.post,...
+                        rcm.P.raw.time,     rcm.sampling.P  );
+
+set(get(AX(1), 'Ylabel'), 'String', 'Chamber Pressure(bar)', ...
+    'FontSize', FontSize, 'FontWeight', FontWeight, 'Color', 'k');
+set(get(AX(2), 'Ylabel'), 'String', 'Sampling Pressure(bar)', ...
+    'FontSize', FontSize, 'FontWeight', FontWeight, 'Color', 'b');
+
+set(AX(1), 'fontsize', FontSize);
+set(AX(2), 'fontsize', FontSize);
+
+set(H1, 'Color', 'r', 'LineWidth', LineWidth, 'LineStyle', '-');
+set(H2, 'Color', 'b', 'LineWidth', LineWidth, 'LineStyle', '--');
+
+xlabel('Time[s]', 'FontSize', FontSize, 'FontWeight', FontWeight);
+
 legend ( 'Chamber Pressure','Sampling Pressure','Location','NorthWest');
+
 title([rcm.ID,'Sampling'], 'FontSize', FontSize, 'FontWeight', FontWeight);
-hold on;
-grid on;
-% plot( rcm.P.raw.time, rcm.raw.data(:,3).*15 )
+
+hold all;
+
+plot( [rcm.lookup.TDC.zero_time+rcm.sampling.time ...
+    rcm.lookup.TDC.zero_time+rcm.sampling.time]./1E3,...
+    [min( rcm.P.post ) max(rcm.P.post)] );
+
+hold all;
+
+plot( rcm.P.raw.time, rcm.raw.data(:,3).*max(rcm.P.post)./5 );
+
+hold all;
+
+plot( [rcm.lookup.TDC.zero_time rcm.lookup.TDC.zero_time]./1E3,...
+    [min( rcm.P.post ) max(rcm.P.post)] ,'-.');
+
+hold all;
+
+plot( [rcm.lookup.TDC.zero_time+rcm.ign.total_time ...
+    rcm.lookup.TDC.zero_time+rcm.ign.total_time]./1E3,...
+    [min( rcm.P.post ) max(rcm.P.post)] ,'-.k');
+
+hold all;
+
+str = [ 'S NT = ' num2str(rcm.sampling.normal_time ,'%.2f') ...
+    '  S dP = ' num2str(rcm.sampling.deltaP,'%.2f') ...
+    '  S time = ' num2str(rcm.sampling.time,'%.2f') ];
+text('Position',[rcm.lookup.TDC.zero_time./1E3 max(rcm.P.post)], ...
+    'String',str,...
+    'FontName', 'Times New Roman','FontSize', 8);
+
 FileFig2 = ['RCM_Sampling_',rcm.ID,'.fig']; 
+
 saveas(figure(2), fullfile(sampling_figFolder,FileFig2));
-end
 
-%% Cal sampling time
-rcm.sampling.start_index = find(rcm.raw.data(:,3) > 0.2, 1 );
-rcm.sampling.finish_index = find(rcm.raw.data(:,3) > 0.2, 1 );
-rcm.sampling.middle_index = (rcm.sampling.start_index + rcm.sampling.finish_index)./2;
-
-%% Cal effective P_sampling, corrsponding to sampling amount
-rcm.sampling.P_before = sum( rcm.sampling.P(1000:30000) )/(30000-1000);
-rcm.sampling.P_after = sum( rcm.sampling.P(85000:100000-1000) )/(15000-1000);
-rcm.sampling.deltaP = rcm.sampling.P_after - rcm.sampling.P_before;
-sampling_P_mid = (rcm.sampling.P_before + rcm.sampling.P_after)/2;
-rcm.sampling.index = find( rcm.sampling.P(20000:80000) > sampling_P_mid ,1)...
-    +20000;
-rcm.sampling.time = rcm.P.raw.time(rcm.sampling.index)*10^3 ...
-    - rcm.lookup.TDC.zero_time;
-rcm.sampling.time_pulse = rcm.P.raw.time(rcm.sampling.middle_index)*10^3 ...
-    - rcm.lookup.TDC.zero_time;
-rcm.sampling.normal_time = rcm.sampling.time./rcm.ign_time(3);
-end % End of Sampling Process
-
-%%
+%% Save Data to Mat File
 if processible == 1     % The current run could be processed.
-%% Save Data to Mat Filercm.P.raw.time = rcm.P.raw.time*1000;
-rcm.P.raw.time = rcm.P.raw.time*1000;
-rcm.P.shift = [rcm.P.raw.time-rcm.lookup.TDC.zero_time, rcm.P.post];
-rcm.P.post = [rcm.P.raw.time, rcm.P.post];
-rcm.P.raw = [rcm.P.raw.time, rcm.P.raw.P];
+
+rcm.P.raw_time = rcm.P.raw.time*1000;
+
+RCM.ChamberPressure.shift = [rcm.P.raw_time-rcm.lookup.TDC.zero_time, rcm.P.post];
+
+RCM.ChamberPressure.post = [rcm.P.raw_time, rcm.P.post];
+
+RCM.ChamberPressure.raw = [rcm.P.raw_time, rcm.raw.data(:,1)];
 
 RCM.ID = rcm.ID;
+
 RCM.RunNum = rcm.dayID;
+
 RCM.Fuel = rcm.fuel;
+
 RCM.Phi = rcm.phi;
+
 RCM.Dilution = rcm.Molar.Dilution_ratio;
+
 RCM.p_initial = rcm.initial.P;
+
 RCM.T_initial = rcm.initial.T;
+
 RCM.p_eff = rcm.P_eff;
+
 RCM.T_eff = rcm.T_eff;
+
 if rcm.ign_stage == 1
+
     RCM.Ign_delay = rcm.ign_time(3);
+
 elseif rcm.ign_stage == 2
+
     RCM.Ign_delay = [rcm.ign_time(1), rcm.ign_time(3)];
+
 end
+
 RCM.CR = rcm.V_CR;
+
 RCM.ChamberLength = rcm.config;
-RCM.Remark = rcm.remark;
+
+RCM.Remark = Remark;
+
 RCM.Molar = rcm.Molar;
-RCM.ChamberPressure.raw = rcm.P.raw;
-RCM.ChamberPressure.post = rcm.P.post;
-RCM.ChamberPressure.shift = rcm.P.shift;
+
 RCM.ChamberPressure.Filter = rcm.P.Filter;
+
 RCM.ChamberPressure.Filter.AMP = rcm.P.AMP;
+
 if rcm.bool_sampling == 1
     RCM.Sampling = rcm.sampling;
 elseif rcm.bool_sampling == 0
     RCM.Sampling = 'No Sampling';
+    close 2;
 end
+
 RCM.lookup = rcm.lookup;
+
 savemat = ['RCM_', rcm.ID, '.mat' ];
+
 save(fullfile(rcmFolder, savemat), 'RCM');
+
 %% Print
+
 fprintf( 'Effective Pressure:        P_eff = %.2f bar\n',rcm.P_eff);  
+
 fprintf( 'Effective Temperature      T_eff = %.2f K\n',rcm.T_eff); 
+
 fprintf( 'Volume Compression Ratio    V_CR = %.1f \n',rcm.V_CR); 
+
 fprintf( 'ign delay time:             t_id = %.2f ms\n',RCM.Ign_delay); 
+
 disp(RCM.Sampling);
 
 %% Save Data to Excel
 Todayxls = fullfile(xlsFolder, [rcm.date, '.xlsx']);
+
 ROW = str2num(rcm.dayID) + 1;
+
 headers = { 'Date','DayID','Fuel',...
     rcm.fuel, 'O2','N2','Ar','CO2', 'PHI','Dilution Ratio',...
     'P_initial(bar)', 'T_initial', 'P_eff(bar)', 'T_eff(K)',...
     'ign_1st(ms)' ,'ign delay(ms)', 'Chamber length(mm)', 'Chamber Parts(mm)' ...
     'CR' , 'S_dP','S_Time(ms)','S_NT','Remarks' };
+
 if rcm.ign_stage == 1
     A_row = [ {rcm.date}, {rcm.dayID},{rcm.fuel},... 
         eval(['rcm.Molar.' rcm.fuel]), rcm.Molar.O2, rcm.Molar.N2,...
@@ -459,6 +661,7 @@ if rcm.ign_stage == 1
         rcm.sampling.time,...
         rcm.sampling.normal_time, ...
         Remark ]; 
+
 elseif rcm.ign_stage == 2
     A_row = [ {rcm.date}, {rcm.dayID},{rcm.fuel},... 
         eval(['rcm.Molar.' rcm.fuel]), rcm.Molar.O2, rcm.Molar.N2,...
@@ -470,65 +673,85 @@ elseif rcm.ign_stage == 2
         rcm.sampling.time,...
         rcm.sampling.normal_time, ...
         Remark ]; 
-end    
+end
+
 xlRange = [ 'A',num2str(ROW) ];
+
 xlswrite(Todayxls,headers,'Sheet1','A1');
+
 xlswrite(Todayxls,A_row,'Sheet1',xlRange);
 
 elseif processible == 0     % The Current Run could not be processed.
-rcm.P.raw.time = rcm.P.raw.time*1000;
-rcm.P.post = [rcm.P.raw.time, rcm.P.post];
-rcm.P.raw = [rcm.P.raw.time, rcm.P.raw.P];
+
+rcm.P.raw_time = rcm.P.raw.time*1000;
+
+% RCM.ChamberPressure.shift = [rcm.P.raw_time-rcm.lookup.TDC.zero_time, rcm.P.post];
+
+RCM.ChamberPressure.post = [rcm.P.raw_time, rcm.P.post];
+
+RCM.ChamberPressure.raw = [rcm.P.raw_time, rcm.raw.data(:,1)];
+
 RCM.ID = rcm.ID;
+
 RCM.RunNum = rcm.dayID;
+
 RCM.Fuel = rcm.fuel;
+
 RCM.Phi = rcm.phi;
+
 RCM.Dilution = rcm.Molar.Dilution_ratio;
+
 RCM.p_initial = rcm.initial.P;
+
 RCM.T_initial = rcm.initial.T;
+
 RCM.ChamberLength = rcm.config;
-RCM.Remark = rcm.remark;
+
+RCM.Remark = Remark;
+
 RCM.Molar = rcm.Molar;
+
 RCM.ChamberPressure.raw = rcm.P.raw;
+
 RCM.ChamberPressure.post = rcm.P.post;
+
 RCM.ChamberPressure.Filter = rcm.P.Filter;
+
 RCM.ChamberPressure.Filter.AMP = rcm.P.AMP;
 
 savemat = ['RCM_', rcm.ID, '.mat' ];
+
 save(fullfile(rcmFolder, savemat), 'RCM');
+
 fprintf( ['The Current Run Can not be Processed!' 10 'Can not Decide End of Compression! ']);  
+
 Todayxls = fullfile(xlsFolder, [rcm.date, '.xlsx']);
+
 ROW = str2num(rcm.dayID) + 1;
+
 headers = { 'Date','DayID','Fuel',...
     rcm.fuel, 'O2','N2','Ar','CO2', 'PHI','Dilution Ratio',...
     'P_initial(bar)', 'T_initial', 'P_eff(bar)', 'T_eff(K)',...
     'ign_1st(ms)' ,'ign delay(ms)', 'Chamber length(mm)', 'Chamber Parts(mm)' ...
     'CR' ,'Remarks' };
+
 A_row = [ {rcm.date}, {rcm.dayID},{rcm.fuel},... 
 	eval(['rcm.Molar.' rcm.fuel]), rcm.Molar.O2, rcm.Molar.N2,...
 	rcm.Molar.Ar, rcm.Molar.CO2, rcm.phi, round(rcm.Molar.Dilution_ratio*100)/100, ...
 	round(rcm.initial.P*10000)/10000, round(rcm.initial.T*100)/100, no_data_sign, no_data_sign, ...
 	no_data_sign, no_data_sign,eval(rcm.config),{rcm.config},...
 	no_data_sign, Remark ]; 
+
 xlRange = [ 'A',num2str(ROW) ];
+
 xlswrite(Todayxls,headers,'Sheet1','A1');
+
 xlswrite(Todayxls,A_row,'Sheet1',xlRange);
 
-end     % End of processible flag.
-% close 1;
-%%
-%{
-This program is for postprocess pressure trace data from Tsinghua RCM
-The original pressure data filename should be like:
-20140113_Test_18.txt
-This file consits of two columns:Chamber Pressure & Sampling Pressure
-%}
-%%
-%{
-Important updating
-Weiqi Ji,Peng Zhang, Version 9, 20140320
+end
+% End of processible flag.
 
-%}
+
 
 
 
